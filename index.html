@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827"><link rel="manifest" href="manifest.json"><title>MessageFlow</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#f4f5f7;color:#111827}
+.app{max-width:520px;margin:auto;min-height:100vh;background:#f8f9fb}.top{padding:28px 20px 18px;background:#111827;color:white;border-radius:0 0 24px 24px}
+.top h1{margin:0;font-size:28px}.top p{margin:6px 0 0;color:#cbd5e1}.content{padding:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:white;border:1px solid #e5e7eb;border-radius:18px;padding:16px;box-shadow:0 4px 18px #00000008}.label{font-size:13px;color:#6b7280}.num{font-size:28px;font-weight:750;margin-top:5px}.section{margin:18px 0 10px;font-size:18px;font-weight:700}.bar{height:9px;background:#e5e7eb;border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:#111827}.row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee}.pill{padding:5px 9px;border-radius:999px;background:#eef2ff;font-size:12px}.nav{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5e7eb;display:flex;justify-content:space-around;padding:10px}.nav button{border:0;background:none;color:#6b7280;font-weight:600}.nav button.active{color:#111827}.view{display:none}.view.active{display:block}button.primary{width:100%;padding:14px;border:0;border-radius:14px;background:#111827;color:white;font-weight:700;margin-top:12px}textarea,input{width:100%;padding:13px;border:1px solid #d1d5db;border-radius:12px;margin-top:8px;font:inherit}
+.small{font-size:12px;color:#6b7280;line-height:1.4}
+</style></head><body><main class="app">
+<header class="top"><h1>MessageFlow</h1><p>SMS test &amp; queue dashboard</p></header>
+<section class="content">
+<div id="dashboard" class="view active"><div class="grid">
+<div class="card"><div class="label">Verzonden</div><div class="num" id="sent">0</div></div>
+<div class="card"><div class="label">Nog te doen</div><div class="num" id="pending">0</div></div>
+<div class="card"><div class="label">Mislukt</div><div class="num" id="failed">0</div></div>
+<div class="card"><div class="label">Totaal</div><div class="num" id="total">0</div></div></div>
+<div class="section">Voortgang</div><div class="card"><div class="bar"><i id="progress"></i></div><p class="small" id="progressText">Nog geen contacten geladen.</p></div>
+<div class="section">Laatste activiteit</div><div class="card" id="activity"><div class="small">Nog geen activiteit.</div></div></div>
+<div id="contacts" class="view"><div class="section">Contacten</div><div class="card"><input id="numbers" placeholder="Plak nummers, één per regel"><input id="csvFile" type="file" accept=".csv,text/csv" style="margin-top:12px"><button class="primary" onclick="loadNumbers()">Contacten laden</button><button class="primary" style="background:#374151" onclick="importCSV()">CSV importeren</button><p class="small">Gebruik alleen testnummers/ontvangers die toestemming hebben gegeven.</p></div><div class="card" id="list" style="margin-top:12px"></div></div>
+<div id="compose" class="view"><div class="section">Bericht</div><div class="card"><textarea id="message" rows="5" placeholder="Typ je testbericht..."></textarea><button class="primary" onclick="simulate()">Test verzending starten</button><p class="small">Deze demo simuleert de verzendstatus lokaal; er wordt geen echte SMS verstuurd.</p></div></div>
+<div id="log" class="view"><div class="section">Logboek</div><div class="card" id="logs"><div class="small">Geen logs.</div></div></div>
+</section>
+<nav class="nav"><button class="active" onclick="show('dashboard',this)">Overzicht</button><button onclick="show('contacts',this)">Contacten</button><button onclick="show('compose',this)">Bericht</button><button onclick="show('log',this)">Logboek</button></nav>
+</main>
+<script>
+let data=JSON.parse(localStorage.getItem('mf')||'{"items":[],"logs":[]}');
+function save(){localStorage.setItem('mf',JSON.stringify(data));render()}
+function render(){let t=data.items.length,s=data.items.filter(x=>x.status==='sent').length,f=data.items.filter(x=>x.status==='failed').length,p=t-s-f;
+document.querySelector('#total').textContent=t;document.querySelector('#sent').textContent=s;document.querySelector('#failed').textContent=f;document.querySelector('#pending').textContent=p;
+document.querySelector('#progress').style.width=(t?((s+f)/t*100):0)+'%';document.querySelector('#progressText').textContent=t?`${s+f} van ${t} verwerkt`:'Nog geen contacten geladen.';
+document.querySelector('#list').innerHTML=data.items.length?data.items.map(x=>`<div class="row"><span>${x.number}</span><span class="pill">${x.status}</span></div>`).join(''):'<div class="small">Nog geen contacten.</div>';
+document.querySelector('#logs').innerHTML=data.logs.length?data.logs.slice().reverse().map(x=>`<div class="row"><span>${x.text}</span><span class="small">${x.time}</span></div>`).join(''):'<div class="small">Geen logs.</div>';
+}
+function show(id,b){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active')}
+
+async function importCSV(){
+ const file=document.getElementById('csvFile').files[0];
+ if(!file){alert('Kies eerst een CSV-bestand.');return}
+ const text=await file.text();
+ const nums=text.split(/\r?\n/).flatMap(row=>row.split(/[;,]/))
+   .map(x=>x.trim().replace(/^["']|["']$/g,''))
+   .filter(x=>x && /[0-9]/.test(x) && x.length>=6);
+ const unique=[...new Set(nums)];
+ const added=unique.filter(n=>!data.items.some(x=>x.number===n));
+ data.items.push(...added.map(n=>({number:n,status:'pending'})));
+ data.logs.push({text:`CSV geïmporteerd: ${added.length} nieuwe contacten`,time:new Date().toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'})});
+ save();
+}
+
+function loadNumbers(){let a=document.getElementById('numbers').value.split(/\s+/).map(x=>x.trim()).filter(Boolean);data.items=[...data.items,...a.filter(n=>!data.items.some(x=>x.number===n)).map(n=>({number:n,status:'pending'}))];data.logs.push({text:`${a.length} contacten geladen`,time:new Date().toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'})});save()}
+async function simulate(){let msg=document.getElementById('message').value.trim();if(!msg||!data.items.length)return alert('Voer een bericht in en laad contacten.');for(let x of data.items.filter(x=>x.status==='pending').slice(0,20)){x.status='sent';data.logs.push({text:`Demo: ${x.number} verwerkt`,time:new Date().toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'})});render();await new Promise(r=>setTimeout(r,180))}save()}
+render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script></body></html>
